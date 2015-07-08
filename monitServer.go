@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -27,31 +29,54 @@ func getStatus() {
 			conf := &Config{}
 			conf.GetMachineInfo(ip)
 			conf.GetContainerInfo(ip)
-			if Cluster[ip].CpuMax < conf.Cpuusage {
-				Cluster[ip].CpuMax = conf.Cpuusage
+			if Cluster[ip].Spec.CpuMax < conf.Cpuusage {
+				Cluster[ip].Spec.CpuMax = conf.Cpuusage
+				Cluster[ip].Spec.CpuMaxTimeStamp = conf.Timestamp
 			}
-			if Cluster[ip].DiskMax < conf.Diskusage {
-				Cluster[ip].DiskMax = conf.Diskusage
+			if Cluster[ip].Spec.DiskMax < conf.Diskusage {
+				Cluster[ip].Spec.DiskMax = conf.Diskusage
+				Cluster[ip].Spec.DiskMaxTimeStamp = conf.Timestamp
 			}
-			if Cluster[ip].MemoryMax < conf.Memmoryusage {
-				Cluster[ip].MemoryMax = conf.Memmoryusage
+			if Cluster[ip].Spec.MemoryMax < conf.Memmoryusage {
+				Cluster[ip].Spec.MemoryMax = conf.Memmoryusage
+				Cluster[ip].Spec.MemoryMaxTimeStamp = conf.Timestamp
 			}
-			if Cluster[ip].RxMax < conf.NetworkInfo[0].Rx {
-				Cluster[ip].RxMax = conf.NetworkInfo[0].Rx
+			if Cluster[ip].Spec.RxMax < conf.NetworkInfo[0].Rx {
+				Cluster[ip].Spec.RxMax = conf.NetworkInfo[0].Rx
+				Cluster[ip].Spec.RxMaxTimeStamp = conf.Timestamp
 			}
-			if Cluster[ip].TxMax < conf.NetworkInfo[0].Tx {
-				Cluster[ip].TxMax = conf.NetworkInfo[0].Tx
+			if Cluster[ip].Spec.TxMax < conf.NetworkInfo[0].Tx {
+				Cluster[ip].Spec.TxMax = conf.NetworkInfo[0].Tx
+				Cluster[ip].Spec.TxMaxTimeStamp = conf.Timestamp
 			}
 			if len(Cluster[ip].Status) < 240 {
 				Cluster[ip].Status = append(Cluster[ip].Status, conf)
 			} else {
-				Cluster[ip].Status[Cluster[ip].Point] = conf
+				Cluster[ip].Status[Cluster[ip].Index] = conf
 			}
-			Cluster[ip].Point = (Cluster[ip].Point + 1) % 240
+			Cluster[ip].Index = (Cluster[ip].Index + 1) % 240
 		}
 		time.Sleep(time.Second * 30)
 	}
 
+}
+func GetLocalIp() string {
+	addrs, err := net.InterfaceAddrs()
+
+	if err != nil {
+		fmt.Printf("Get Local IP error: %v\n", err)
+		os.Exit(1)
+	}
+
+	for _, address := range addrs {
+		// check the address type and if it is not a loopback the display it
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return ""
 }
 func main() {
 	go getStatus()
@@ -66,7 +91,8 @@ func init() {
 	Cluster = map[string]*Nodestatus{}
 	data := NodeList{}
 	client := &http.Client{}
-	resp, err := client.Get("http://10.10.103.250:8080/api/v1beta3/nodes/")
+	//resp, err := client.Get("http://10.10.103.250:8080/api/v1beta3/nodes/")
+	resp, err := client.Get("http://" + GetLocalIp() + ":8080/api/v1beta3/nodes/")
 	if err != nil {
 		fmt.Printf(err.Error())
 	}
@@ -76,6 +102,6 @@ func init() {
 	_ = json.Unmarshal(buff.Bytes(), &data)
 	for _, item := range data.Items {
 		Ips = append(Ips, item.Name)
-		Cluster[item.Name] = NewNodestatus(item.Name)
+		Cluster[item.Name] = &Nodestatus{} //NewNodestatus(item.Name)
 	}
 }

@@ -14,27 +14,36 @@ type Net struct {
 	Tx   float64
 }
 type Config struct {
-	Timestamp      int64
-	Cpuusage       uint64
-	Cpufrequency   uint64
-	Cpucores       int
-	Memmoryusage   uint64
-	Memorycapacity int64
-	Diskusage      uint64
-	Diskcapacity   uint64
-	NetworkInfo    []*Net
+	Timestamp    int64
+	Cpuusage     uint64
+	Memmoryusage uint64
+	Diskusage    uint64
+	NetworkInfo  []*Net
+}
+type SpecialData struct {
+	CpuMax             uint64
+	CpuMaxTimeStamp    int64
+	MemoryMax          uint64
+	MemoryMaxTimeStamp int64
+	DiskMax            uint64
+	DiskMaxTimeStamp   int64
+	RxMax              float64
+	RxMaxTimeStamp     int64
+	TxMax              float64
+	TxMaxTimeStamp     int64
 }
 type Nodestatus struct {
-	Ip        string
-	CpuMax    uint64
-	MemoryMax uint64
-	DiskMax   uint64
-	RxMax     float64
-	TxMax     float64
-	Status    []*Config
-	Point     int
+	//Ip             string
+	Cpucores       int
+	Cpufrequency   uint64
+	Memorycapacity int64
+	Diskcapacity   uint64
+	Spec           SpecialData
+	Status         []*Config
+	Index          int
 }
 
+/*
 func NewNodestatus(ip string) *Nodestatus {
 	conf := []*Config{}
 	return &Nodestatus{
@@ -48,6 +57,7 @@ func NewNodestatus(ip string) *Nodestatus {
 		Point:     0,
 	}
 }
+*/
 func (c *Config) GetMachineInfo(ip string) {
 	machineinfo := MachineInfo{}
 	client := &http.Client{}
@@ -59,14 +69,14 @@ func (c *Config) GetMachineInfo(ip string) {
 	buff := new(bytes.Buffer)
 	buff.ReadFrom(resp.Body)
 	_ = json.Unmarshal(buff.Bytes(), &machineinfo)
-	c.Cpucores = machineinfo.NumCores
-	c.Cpufrequency = machineinfo.CpuFrequency * 1000
-	c.Memorycapacity = machineinfo.MemoryCapacity
+	Cluster[ip].Cpucores = machineinfo.NumCores
+	Cluster[ip].Cpufrequency = machineinfo.CpuFrequency * 1000
+	Cluster[ip].Memorycapacity = machineinfo.MemoryCapacity
 	var Filesystem uint64 = 0
 	for _, fs := range machineinfo.Filesystems {
 		Filesystem += fs.Capacity
 	}
-	c.Diskcapacity = Filesystem
+	Cluster[ip].Diskcapacity = Filesystem
 }
 func (c *Config) GetContainerInfo(ip string) {
 	containerinfo := ContainerInfo{}

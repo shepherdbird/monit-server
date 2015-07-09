@@ -96,7 +96,6 @@ func (c *Config) GetContainerInfo(ip string) {
 	if err != nil {
 		fmt.Println(err.Error())
 	} else {
-		defer resp.Body.Close()
 		buff := new(bytes.Buffer)
 		buff.ReadFrom(resp.Body)
 		_ = json.Unmarshal(buff.Bytes(), &containerinfo)

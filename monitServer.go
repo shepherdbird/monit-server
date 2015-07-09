@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
+	//"log"
+	"github.com/coreos/go-etcd/etcd"
 	"net"
 	"net/http"
 	"os"
@@ -12,6 +13,8 @@ import (
 )
 
 var Switch bool = true
+var EtcdClient *etcd.Client
+var Tocken = "123456"
 
 func ClusterStatus(w http.ResponseWriter, req *http.Request) {
 	FCluster.Cluster = Cluster
@@ -27,16 +30,20 @@ func ClusterStatus(w http.ResponseWriter, req *http.Request) {
 }
 func ContainerStatus(w http.ResponseWriter, req *http.Request) {
 	containerId := req.Header.Get("container")
-	k, v := Container["/docker/"+containerId]
-	if v {
-		Jdata, _ := json.Marshal(k)
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(Jdata))
+	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
+		k, v := Container["/docker/"+containerId]
+		if v {
+			Jdata, _ := json.Marshal(k)
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(Jdata))
+		} else {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("container id do not exist"))
+		}
 	} else {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("container id do not exist"))
+		w.WriteHeader(http.StatusForbidden)
 	}
 
 }
@@ -66,12 +73,12 @@ func GetClusterStatus() {
 				Cluster[ip].Spec.TxMax = conf.NetworkInfo[0].Tx
 				Cluster[ip].Spec.TxMaxTimeStamp = conf.Timestamp
 			}
-			if len(Cluster[ip].Status) < 240 {
+			if len(Cluster[ip].Status) < 120 {
 				Cluster[ip].Status = append(Cluster[ip].Status, conf)
 			} else {
 				Cluster[ip].Status[Cluster[ip].Index] = conf
 			}
-			Cluster[ip].Index = (Cluster[ip].Index + 1) % 240
+			Cluster[ip].Index = (Cluster[ip].Index + 1) % 120
 		}
 		data := NodeList{}
 		client := &http.Client{}
@@ -126,15 +133,129 @@ func GetLocalIp() string {
 	}
 	return ""
 }
+
+/*work for etcd*/
+func Create(w http.ResponseWriter, req *http.Request) {
+	token := req.Header.Get("Authorization")
+	if token != Tocken {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+"Authorization Not Set"+`"}`, 406)
+		return
+	}
+	key := req.FormValue("key")
+	value := req.FormValue("value")
+	if key == "" || value == "" {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+fmt.Sprintf("key = %s ,value = %s", key, value)+`"}`, 406)
+		return
+	}
+	_, err := EtcdClient.Get(key, false, false)
+	if err != nil {
+		_, err = EtcdClient.Create(key, value, 0)
+	} else {
+		_, err = EtcdClient.Update(key, value, 0)
+	}
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+err.Error()+`"}`, 406)
+		return
+	}
+	w.WriteHeader(200)
+
+	w.Write([]byte(`{"Message":"` + "Success" + `"}`))
+}
+func Update(w http.ResponseWriter, req *http.Request) {
+	token := req.Header.Get("Authorization")
+	if token != Tocken {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+"Authorization Not Set"+`"}`, 406)
+		return
+	}
+	key := req.FormValue("key")
+	value := req.FormValue("value")
+	if key == "" || value == "" {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+fmt.Sprintf("key = %s ,value = %s", key, value)+`"}`, 406)
+		return
+	}
+	_, err := EtcdClient.Update(key, value, 0)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+err.Error()+`"}`, 406)
+		return
+	}
+	w.WriteHeader(200)
+	w.Write([]byte(`{"Message":"` + "Success" + `"}`))
+}
+func Get(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	token := req.Header.Get("Authorization")
+	if token != Tocken {
+		//w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+"Authorization Not Set"+`"}`, 406)
+		return
+	}
+	req.ParseForm()
+	key := req.Form.Get("key")
+	if key == "" {
+		//w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+fmt.Sprintf("key = %s", key)+`"}`, 406)
+		return
+	}
+	resp, err := EtcdClient.Get(key, false, false)
+	if err != nil {
+		//w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+err.Error()+`"}`, 406)
+		return
+	}
+	tt, _ := json.Marshal(resp)
+	fmt.Println(string(tt))
+	w.WriteHeader(200)
+	//w.Header().Set("Content-Type", "application/json")
+	w.Write(tt)
+}
+func Delete(w http.ResponseWriter, req *http.Request) {
+	token := req.Header.Get("Authorization")
+	if token != Tocken {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+"Authorization Not Set"+`"}`, 406)
+		return
+	}
+	//req.ParseForm()
+	//body, _ := ioutil.ReadAll(req.Body)
+	//fmt.Println(string(body))
+	//req.ParseForm()
+	//key := req.Form.Get("key")
+	key := req.FormValue("key")
+	//key := req.FormValue("key")
+	if key == "" {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+fmt.Sprintf("key = %s", key)+`"}`, 406)
+		return
+	}
+	_, err := EtcdClient.Delete(key, false)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+err.Error()+`"}`, 406)
+		return
+	}
+	w.WriteHeader(200)
+	w.Write([]byte(`{"Message":"` + "Success" + `"}`))
+}
+
 func main() {
 	go GetClusterStatus()
 	go GetContainerStatus()
 	http.HandleFunc("/api/cluster/status", ClusterStatus)
 	http.HandleFunc("/api/container/status", ContainerStatus)
+	EtcdClient = etcd.NewClient([]string{"http://127.0.0.1:2379"})
+	http.HandleFunc("/create", Create)
+	http.HandleFunc("/get", Get)
+	http.HandleFunc("/delete", Delete)
 	//err := http.ListenAndServeTLS("0.0.0.0:50000", "cert.pem", "key.pem", nil)
 	err := http.ListenAndServe("0.0.0.0:50000", nil)
 	if err != nil {
-		log.Fatal("ListenAndServe: ", err.Error())
+		fmt.Println(err.Error())
 	}
 }
 func init() {

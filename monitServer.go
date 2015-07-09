@@ -11,19 +11,36 @@ import (
 	"time"
 )
 
-var (
-	Ips     []string
-	Cluster map[string]*Nodestatus
-)
+var Switch bool = true
 
-func status(w http.ResponseWriter, req *http.Request) {
-	Jdata, _ := json.Marshal(Cluster)
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(Jdata))
+func ClusterStatus(w http.ResponseWriter, req *http.Request) {
+	FCluster.Cluster = Cluster
+	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
+		Jdata, _ := json.Marshal(FCluster)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(Jdata))
+	} else {
+		w.WriteHeader(http.StatusForbidden)
+	}
 
 }
-func getStatus() {
+func ContainerStatus(w http.ResponseWriter, req *http.Request) {
+	containerId := req.Header.Get("container")
+	k, v := Container["/docker/"+containerId]
+	if v {
+		Jdata, _ := json.Marshal(k)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(Jdata))
+	} else {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("container id do not exist"))
+	}
+
+}
+func GetClusterStatus() {
 	for {
 		for _, ip := range Ips {
 			conf := &Config{}
@@ -56,9 +73,40 @@ func getStatus() {
 			}
 			Cluster[ip].Index = (Cluster[ip].Index + 1) % 240
 		}
+		data := NodeList{}
+		client := &http.Client{}
+		//resp, err := client.Get("http://10.10.103.250:8080/api/v1beta3/nodes/")
+		resp, err := client.Get("http://" + GetLocalIp() + ":8080/api/v1beta3/nodes/")
+		if err != nil {
+			fmt.Printf(err.Error())
+		} else {
+			FCluster.Status = "Ready"
+			buff := new(bytes.Buffer)
+			buff.ReadFrom(resp.Body)
+			_ = json.Unmarshal(buff.Bytes(), &data)
+			for _, item := range data.Items {
+				if item.Status.Conditions[0].Type != "Ready" {
+					FCluster.Status = "Not Ready"
+				}
+			}
+		}
 		time.Sleep(time.Second * 30)
 	}
 
+}
+func GetContainerStatus() {
+	for {
+		Switch = !Switch
+		for _, ip := range Ips {
+			ContainerIdInfo(ip)
+		}
+		for k, v := range Container {
+			if v.Switch != Switch {
+				delete(Container, k)
+			}
+		}
+		time.Sleep(time.Second * 30)
+	}
 }
 func GetLocalIp() string {
 	addrs, err := net.InterfaceAddrs()
@@ -79,8 +127,11 @@ func GetLocalIp() string {
 	return ""
 }
 func main() {
-	go getStatus()
-	http.HandleFunc("/api/status", status)
+	go GetClusterStatus()
+	go GetContainerStatus()
+	http.HandleFunc("/api/cluster/status", ClusterStatus)
+	http.HandleFunc("/api/container/status", ContainerStatus)
+	//err := http.ListenAndServeTLS("0.0.0.0:50000", "cert.pem", "key.pem", nil)
 	err := http.ListenAndServe("0.0.0.0:50000", nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err.Error())
@@ -89,19 +140,26 @@ func main() {
 func init() {
 	Ips = []string{}
 	Cluster = map[string]*Nodestatus{}
+	Container = map[string]*ContainerNode{}
+	FCluster.Status = "Ready"
+	FCluster.Cluster = Cluster
 	data := NodeList{}
 	client := &http.Client{}
 	//resp, err := client.Get("http://10.10.103.250:8080/api/v1beta3/nodes/")
 	resp, err := client.Get("http://" + GetLocalIp() + ":8080/api/v1beta3/nodes/")
 	if err != nil {
 		fmt.Printf(err.Error())
-	}
-	defer resp.Body.Close()
-	buff := new(bytes.Buffer)
-	buff.ReadFrom(resp.Body)
-	_ = json.Unmarshal(buff.Bytes(), &data)
-	for _, item := range data.Items {
-		Ips = append(Ips, item.Name)
-		Cluster[item.Name] = &Nodestatus{} //NewNodestatus(item.Name)
+	} else {
+		defer resp.Body.Close()
+		buff := new(bytes.Buffer)
+		buff.ReadFrom(resp.Body)
+		_ = json.Unmarshal(buff.Bytes(), &data)
+		for _, item := range data.Items {
+			Ips = append(Ips, item.Name)
+			Cluster[item.Name] = &Nodestatus{} //NewNodestatus(item.Name)
+			if item.Status.Conditions[0].Type != "Ready" {
+				FCluster.Status = "Not Ready"
+			}
+		}
 	}
 }

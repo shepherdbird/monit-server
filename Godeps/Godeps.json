@@ -1,0 +1,15 @@
+{
+	"ImportPath": "github.com/shepherdbird/monit-server",
+	"GoVersion": "go1.3",
+	"Deps": [
+		{
+			"ImportPath": "github.com/coreos/go-etcd/etcd",
+			"Comment": "v2.0.0-16-g1180386",
+			"Rev": "11803862ebb77bb451b70d790fe036bf4688ba22"
+		},
+		{
+			"ImportPath": "github.com/ugorji/go/codec",
+			"Rev": "821cda7e48749cacf7cad2c6ed01e96457ca7e9d"
+		}
+	]
+}

@@ -9,12 +9,17 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 )
 
 var Switch bool = true
 var EtcdClient *etcd.Client
-var Tocken = "123456"
+var Tocken = "qwertyuiopasdfghjklzxcvbnm1234567890"
+var RxSecond int = 0
+var TxSecond int = 0
 
 func ClusterStatus(w http.ResponseWriter, req *http.Request) {
 	FCluster.Cluster = Cluster
@@ -47,7 +52,35 @@ func ContainerStatus(w http.ResponseWriter, req *http.Request) {
 	}
 
 }
+func excute(command string) string {
+	cmd := exec.Command("/bin/sh", "-c", command)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	_ = cmd.Run()
+	return out.String()
+}
+func GetClusterNetworkStatus() (Rx float64, Tx float64) {
+	RxOld := excute("iptables -nvxL INPUT | grep tcp | awk 'BEGIN{count=0;}{if(NR==1){count+=$2;}else{count-=$2;}}END{print count;}'")
+	RxFirst, _ := strconv.Atoi(strings.TrimRight(RxOld, string(10)))
+	TxOld := excute("iptables -nvxL OUTPUT | grep tcp | awk 'BEGIN{count=0;}{if(NR==1){count+=$2;}else{count-=$2;}}END{print count;}'")
+	TxFirst, _ := strconv.Atoi(strings.TrimRight(TxOld, string(10)))
+	if len(FCluster.Network) == 0 {
+		time.Sleep(time.Second * 1)
+		RxNew := excute("iptables -nvxL INPUT | grep tcp | awk 'BEGIN{count=0;}{if(NR==1){count+=$2;}else{count-=$2;}}END{print count;}'")
+		RxSecond, _ := strconv.Atoi(strings.TrimRight(RxNew, string(10)))
+		TxNew := excute("iptables -nvxL OUTPUT | grep tcp | awk 'BEGIN{count=0;}{if(NR==1){count+=$2;}else{count-=$2;}}END{print count;}'")
+		TxSecond, _ := strconv.Atoi(strings.TrimRight(TxNew, string(10)))
+		fmt.Println(int64(RxSecond), int64(TxSecond))
+		return float64(RxSecond - RxFirst), float64(TxSecond - TxFirst)
+	} else {
+		RxTemp, TxTemp := float64(RxFirst-RxSecond)/30.0, float64(TxFirst-TxSecond)/30.0
+		RxSecond = RxFirst
+		TxSecond = TxFirst
+		return RxTemp, TxTemp
+	}
+}
 func GetClusterStatus() {
+	Point := 0
 	for {
 		for _, ip := range Ips {
 			conf := &Config{}
@@ -78,6 +111,7 @@ func GetClusterStatus() {
 			} else {
 				Cluster[ip].Status[Cluster[ip].Index] = conf
 			}
+			Point = Cluster[ip].Index
 			Cluster[ip].Index = (Cluster[ip].Index + 1) % 120
 		}
 		data := NodeList{}
@@ -96,6 +130,23 @@ func GetClusterStatus() {
 					FCluster.Status = "Not Ready"
 				}
 			}
+		}
+		nets := &ClusterNetwork{}
+		nets.TimeStamp = time.Now().Unix()
+		nets.Rx, nets.Tx = GetClusterNetworkStatus()
+		fmt.Println(nets.Rx, nets.Tx)
+		if len(FCluster.Network) < 120 {
+			FCluster.Network = append(FCluster.Network, nets)
+		} else {
+			FCluster.Network[Point] = nets
+		}
+		if FCluster.MasterRxMax < nets.Rx {
+			FCluster.MasterRxMax = nets.Rx
+			FCluster.MasterRxMaxStamp = nets.TimeStamp
+		}
+		if FCluster.MasterTxMax < nets.Tx {
+			FCluster.MasterTxMax = nets.Tx
+			FCluster.MasterTxMaxStamp = nets.TimeStamp
 		}
 		time.Sleep(time.Second * 30)
 	}
@@ -246,14 +297,26 @@ func Delete(w http.ResponseWriter, req *http.Request) {
 func main() {
 	go GetClusterStatus()
 	go GetContainerStatus()
+	excute("iptables -F INPUT")
+	excute("iptables -F OUTPUT")
+	////Rx
+	excute("iptables -I INPUT -s 10.0.0.0/8 -p tcp -m multiport --dport 50000,8080,8081,2376,80")
+	excute("iptables -I INPUT -s 172.16.0.0/16 -p tcp -m multiport --dport 50000,8080,8081,2376,80")
+	excute("iptables -I INPUT -s 192.168.0.0/16 -p tcp -m multiport --dport 50000,8080,8081,2376,80")
+	excute("iptables -I INPUT -p tcp -m multiport --dport 50000,8080,8081,2376,80")
+	//Tx
+	excute("iptables -I OUTPUT -d 10.0.0.0/8 -p tcp -m multiport --sport 50000,8080,8081,2376,80")
+	excute("iptables -I OUTPUT -d 172.16.0.0/16 -p tcp -m multiport --sport 50000,8080,8081,2376,80")
+	excute("iptables -I OUTPUT -d 192.168.0.0/16 -p tcp -m multiport --sport 50000,8080,8081,2376,80")
+	excute("iptables -I OUTPUT -p tcp -m multiport --sport 50000,8080,8081,2376,80")
 	http.HandleFunc("/api/cluster/status", ClusterStatus)
 	http.HandleFunc("/api/container/status", ContainerStatus)
 	EtcdClient = etcd.NewClient([]string{"http://127.0.0.1:2379"})
 	http.HandleFunc("/create", Create)
 	http.HandleFunc("/get", Get)
 	http.HandleFunc("/delete", Delete)
-	//err := http.ListenAndServeTLS("0.0.0.0:50000", "cert.pem", "key.pem", nil)
-	err := http.ListenAndServe("0.0.0.0:50000", nil)
+	err := http.ListenAndServeTLS("0.0.0.0:50000", "cert.pem", "key.pem", nil)
+	//err := http.ListenAndServe("0.0.0.0:50000", nil)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
@@ -263,7 +326,10 @@ func init() {
 	Cluster = map[string]*Nodestatus{}
 	Container = map[string]*ContainerNode{}
 	FCluster.Status = "Ready"
+	FCluster.Network = []*ClusterNetwork{}
 	FCluster.Cluster = Cluster
+	FCluster.MasterRxMax = 0
+	FCluster.MasterTxMax = 0
 	data := NodeList{}
 	client := &http.Client{}
 	//resp, err := client.Get("http://10.10.103.250:8080/api/v1beta3/nodes/")

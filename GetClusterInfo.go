@@ -42,9 +42,19 @@ type Nodestatus struct {
 	Status         []*Config
 	Index          int
 }
+type ClusterNetwork struct {
+	TimeStamp int64
+	Rx        float64
+	Tx        float64
+}
 type FinalCluster struct {
-	Status  string
-	Cluster map[string]*Nodestatus
+	Status           string
+	MasterRxMax      float64
+	MasterRxMaxStamp int64
+	MasterTxMax      float64
+	MasterTxMaxStamp int64
+	Network          []*ClusterNetwork
+	Cluster          map[string]*Nodestatus
 }
 
 var (

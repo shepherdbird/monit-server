@@ -343,6 +343,9 @@ func main() {
 	http.HandleFunc("/api/cluster/status", ClusterStatus)
 	http.HandleFunc("/api/container/status", ContainerStatus)
 	EtcdClient = etcd.NewClient([]string{"http://127.0.0.1:4001"})
+
+	go MonitDockerDaemon()
+
 	http.HandleFunc("/create", Create)
 	http.HandleFunc("/get", Get)
 	http.HandleFunc("/delete", Delete)
@@ -351,8 +354,6 @@ func main() {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-
-	go MonitDockerDaemon()
 
 }
 func init() {

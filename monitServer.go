@@ -82,7 +82,7 @@ func GetClusterNetworkStatus() (Rx float64, Tx float64) {
 
 func MonitDockerDaemon() {
 	for {
-		response, err := EtcdClient.Get("/", false, false)
+		_, err := EtcdClient.Get("/", false, false)
 		if err != nil {
 			ip := GetLocalIp()
 			content := "<html><body>Machine IP:" + ip + "</body></html>"

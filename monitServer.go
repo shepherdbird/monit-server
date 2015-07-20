@@ -84,6 +84,7 @@ func MonitDockerDaemon() {
 	for {
 		_, err := EtcdClient.Get("/", false, false)
 		if err != nil {
+			fmt.Println("Docker Daemon is crashed. Send a email.")
 			ip := GetLocalIp()
 			content := "<html><body>Machine IP:" + ip + "</body></html>"
 			SendEmail(

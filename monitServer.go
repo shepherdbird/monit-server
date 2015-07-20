@@ -92,9 +92,10 @@ func MonitDockerDaemon() {
 				25,
 				"wonderflow@126.com",
 				"zjuvlis123456",
-				[]string{"wonderflow@zju.edu.cn"},
+				[]string{"544028616@qq.com"},
 				"Docker Daemon crashed",
 				content)
+			time.Sleep(time.Hour)
 		}
 		time.Sleep(time.Second * 30)
 	}

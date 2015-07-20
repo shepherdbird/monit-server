@@ -79,6 +79,25 @@ func GetClusterNetworkStatus() (Rx float64, Tx float64) {
 		return RxTemp, TxTemp
 	}
 }
+
+func MonitDockerDaemon() {
+	for {
+		if excute("cat /var/run/docker-bootstrap.pid") == "" {
+			ip := GetLocalIp()
+			content := "<html><body>Machine IP:" + ip + "</body></html>Exception 1"
+			SendEmail(
+				"smtp.126.com",
+				25,
+				"wonderflow@126.com",
+				"zjuvlis123456",
+				[]string{"wonderflow@zju.edu.cn"},
+				"Docker Daemon crashed",
+				content)
+		}
+		time.Sleep(time.Second * 30)
+	}
+}
+
 func GetClusterStatus() {
 	Point := 0
 	for {
@@ -306,6 +325,7 @@ func Delete(w http.ResponseWriter, req *http.Request) {
 func main() {
 	go GetClusterStatus()
 	go GetContainerStatus()
+	go MonitDockerDaemon()
 	excute("iptables -F INPUT")
 	excute("iptables -F OUTPUT")
 	////Rx

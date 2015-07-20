@@ -82,9 +82,10 @@ func GetClusterNetworkStatus() (Rx float64, Tx float64) {
 
 func MonitDockerDaemon() {
 	for {
-		if excute("cat /var/run/docker-bootstrap.pid") == "" {
+		response, err := EtcdClient.Get("/", false, false)
+		if err != nil {
 			ip := GetLocalIp()
-			content := "<html><body>Machine IP:" + ip + "</body></html>Exception 1"
+			content := "<html><body>Machine IP:" + ip + "</body></html>"
 			SendEmail(
 				"smtp.126.com",
 				25,
@@ -325,7 +326,7 @@ func Delete(w http.ResponseWriter, req *http.Request) {
 func main() {
 	go GetClusterStatus()
 	go GetContainerStatus()
-	go MonitDockerDaemon()
+
 	excute("iptables -F INPUT")
 	excute("iptables -F OUTPUT")
 	////Rx
@@ -349,6 +350,9 @@ func main() {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
+
+	go MonitDockerDaemon()
+
 }
 func init() {
 	Ips = []string{}

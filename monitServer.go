@@ -90,22 +90,27 @@ func GetClusterStatus() {
 				Cluster[ip].Spec.CpuMax = conf.Cpuusage
 				Cluster[ip].Spec.CpuMaxTimeStamp = conf.Timestamp
 			}
+			Cluster[ip].Spec.CpuAvg = (Cluster[ip].Spec.CpuAvg*PointNums + conf.Cpuusage) / (PointNums + 1)
 			if Cluster[ip].Spec.DiskMax < conf.Diskusage {
 				Cluster[ip].Spec.DiskMax = conf.Diskusage
 				Cluster[ip].Spec.DiskMaxTimeStamp = conf.Timestamp
 			}
+			Cluster[ip].Spec.DiskAvg = (Cluster[ip].Spec.DiskAvg*PointNums + conf.Diskusage) / (PointNums + 1)
 			if Cluster[ip].Spec.MemoryMax < conf.Memmoryusage {
 				Cluster[ip].Spec.MemoryMax = conf.Memmoryusage
 				Cluster[ip].Spec.MemoryMaxTimeStamp = conf.Timestamp
 			}
+			Cluster[ip].Spec.MemoryAvg = (Cluster[ip].Spec.MemoryAvg*PointNums + conf.Memmoryusage) / (PointNums + 1)
 			if Cluster[ip].Spec.RxMax < conf.NetworkInfo[0].Rx {
 				Cluster[ip].Spec.RxMax = conf.NetworkInfo[0].Rx
 				Cluster[ip].Spec.RxMaxTimeStamp = conf.Timestamp
 			}
+			Cluster[ip].Spec.RxAvg = (Cluster[ip].Spec.RxAvg*float64(PointNums) + float64(conf.NetworkInfo[0].Rx)) / float64(PointNums+1)
 			if Cluster[ip].Spec.TxMax < conf.NetworkInfo[0].Tx {
 				Cluster[ip].Spec.TxMax = conf.NetworkInfo[0].Tx
 				Cluster[ip].Spec.TxMaxTimeStamp = conf.Timestamp
 			}
+			Cluster[ip].Spec.TxAvg = (Cluster[ip].Spec.TxAvg*float64(PointNums) + float64(conf.NetworkInfo[0].Tx)) / float64(PointNums+1)
 			if len(Cluster[ip].Status) < 120 {
 				Cluster[ip].Status = append(Cluster[ip].Status, conf)
 			} else {
@@ -148,6 +153,9 @@ func GetClusterStatus() {
 			FCluster.MasterTxMax = nets.Tx
 			FCluster.MasterTxMaxStamp = nets.TimeStamp
 		}
+		FCluster.MasterRxAvg = (FCluster.MasterRxAvg*float64(PointNums) + nets.Rx) / float64(PointNums+1)
+		FCluster.MasterTxAvg = (FCluster.MasterTxAvg*float64(PointNums) + nets.Tx) / float64(PointNums+1)
+		PointNums += 1
 		time.Sleep(time.Second * 30)
 	}
 
@@ -163,6 +171,7 @@ func GetContainerStatus() {
 				delete(Container, k)
 			}
 		}
+		ConPointNums += 1
 		time.Sleep(time.Second * 30)
 	}
 }
@@ -311,7 +320,7 @@ func main() {
 	excute("iptables -I OUTPUT -p tcp -m multiport --sport 50000,8080,8081,2376,80")
 	http.HandleFunc("/api/cluster/status", ClusterStatus)
 	http.HandleFunc("/api/container/status", ContainerStatus)
-	EtcdClient = etcd.NewClient([]string{"http://127.0.0.1:2379"})
+	EtcdClient = etcd.NewClient([]string{"http://127.0.0.1:4001"})
 	http.HandleFunc("/create", Create)
 	http.HandleFunc("/get", Get)
 	http.HandleFunc("/delete", Delete)
@@ -323,6 +332,8 @@ func main() {
 }
 func init() {
 	Ips = []string{}
+	PointNums = 0
+	ConPointNums = 0
 	Cluster = map[string]*Nodestatus{}
 	Container = map[string]*ContainerNode{}
 	FCluster.Status = "Ready"
@@ -344,6 +355,8 @@ func init() {
 		for _, item := range data.Items {
 			Ips = append(Ips, item.Name)
 			Cluster[item.Name] = &Nodestatus{} //NewNodestatus(item.Name)
+			fmt.Println("item:", item.Name)
+			Cluster[item.Name].DockerVersion, Cluster[item.Name].KernelVersion, Cluster[item.Name].OSVersion = GetVersion(item.Name)
 			if item.Status.Conditions[0].Type != "Ready" {
 				FCluster.Status = "Not Ready"
 			}

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os/exec"
+	"strings"
 )
 
 type Net struct {
@@ -21,19 +23,27 @@ type Config struct {
 	NetworkInfo  []*Net
 }
 type SpecialData struct {
-	CpuMax             uint64
 	CpuMaxTimeStamp    int64
-	MemoryMax          uint64
+	CpuMax             uint64
+	CpuAvg             uint64
 	MemoryMaxTimeStamp int64
-	DiskMax            uint64
+	MemoryMax          uint64
+	MemoryAvg          uint64
 	DiskMaxTimeStamp   int64
-	RxMax              float64
+	DiskMax            uint64
+	DiskAvg            uint64
 	RxMaxTimeStamp     int64
-	TxMax              float64
+	RxMax              float64
+	RxAvg              float64
 	TxMaxTimeStamp     int64
+	TxMax              float64
+	TxAvg              float64
 }
 type Nodestatus struct {
 	//Ip             string
+	DockerVersion  string
+	KernelVersion  string
+	OSVersion      string
 	Cpucores       int
 	Cpufrequency   uint64
 	Memorycapacity int64
@@ -50,17 +60,20 @@ type ClusterNetwork struct {
 type FinalCluster struct {
 	Status           string
 	MasterRxMax      float64
+	MasterRxAvg      float64
 	MasterRxMaxStamp int64
 	MasterTxMax      float64
+	MasterTxAvg      float64
 	MasterTxMaxStamp int64
 	Network          []*ClusterNetwork
 	Cluster          map[string]*Nodestatus
 }
 
 var (
-	Ips      []string
-	Cluster  map[string]*Nodestatus
-	FCluster FinalCluster
+	Ips       []string
+	Cluster   map[string]*Nodestatus
+	PointNums uint64
+	FCluster  FinalCluster
 )
 
 /*
@@ -131,4 +144,23 @@ func (c *Config) GetContainerInfo(ip string) {
 		}
 		c.NetworkInfo = nets
 	}
+}
+func GetVersion(ip string) (DockerVer, KernelVer, OSVer string) {
+	cmd := exec.Command("/bin/sh", "-c", "curl "+ip+" | grep \"Docker Version\"  | cut -d '<' -f4 | cut -d ' ' -f2")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	_ = cmd.Run()
+	DockerV := strings.TrimRight(out.String(), string(10))
+	cmd2 := exec.Command("/bin/sh", "-c", "curl "+ip+" | grep \"Kernel Version\"  | cut -d '<' -f4 | cut -d ' ' -f2")
+	var out2 bytes.Buffer
+	cmd2.Stdout = &out2
+	_ = cmd2.Run()
+	KernelV := strings.TrimRight(out2.String(), string(10))
+	cmd3 := exec.Command("/bin/sh", "-c", "curl "+ip+" | grep \"OS Version\"  | cut -d '<' -f4 | cut -d ' ' -f2")
+	var out3 bytes.Buffer
+	cmd3.Stdout = &out3
+	_ = cmd3.Run()
+	OSV := strings.TrimRight(out3.String(), string(10))
+	fmt.Println("GetVersion", DockerV, KernelV, OSV)
+	return DockerV, KernelV, OSV
 }

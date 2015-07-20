@@ -31,7 +31,8 @@ type ContainerNode struct {
 }
 
 var (
-	Container map[string]*ContainerNode
+	Container    map[string]*ContainerNode
+	ConPointNums uint64
 )
 
 func ContainerIdInfo(ip string) {
@@ -73,34 +74,43 @@ func ContainerIdInfo(ip string) {
 					Container[subcontainers.Name].Status = append(Container[subcontainers.Name].Status, conf)
 				}
 				//fmt.Println(len(containerIdInfo.Stats))
-				Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Diskusage = filesystem
-				Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Timestamp = containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Timestamp.Unix()
-				Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Memmoryusage = containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Memory.Usage
-				interval := containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Timestamp.Sub(containerIdInfo.Stats[0].Timestamp)
-				Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage = uint64(float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Cpu.Usage.Total-containerIdInfo.Stats[0].Cpu.Usage.Total) / float64(interval) * 1000000000)
-				Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Name = containerIdInfo.Stats[0].Network.Name
-				Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Rx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.RxBytes-containerIdInfo.Stats[0].Network.RxBytes) * 1000 / float64(interval)
-				Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Tx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.TxBytes-containerIdInfo.Stats[0].Network.TxBytes) * 1000 / float64(interval)
+				if len(containerIdInfo.Stats) == 0 {
+					fmt.Println("No container Info find.")
+				} else {
+					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Diskusage = filesystem
+					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Timestamp = containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Timestamp.Unix()
+					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Memmoryusage = containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Memory.Usage
+					interval := containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Timestamp.Sub(containerIdInfo.Stats[0].Timestamp)
+					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage = uint64(float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Cpu.Usage.Total-containerIdInfo.Stats[0].Cpu.Usage.Total) / float64(interval) * 1000000000)
+					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Name = containerIdInfo.Stats[0].Network.Name
+					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Rx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.RxBytes-containerIdInfo.Stats[0].Network.RxBytes) * 1000 / float64(interval)
+					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Tx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.TxBytes-containerIdInfo.Stats[0].Network.TxBytes) * 1000 / float64(interval)
+				}
 				if Container[subcontainers.Name].Spec.CpuMax < Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage {
 					Container[subcontainers.Name].Spec.CpuMax = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage
 					Container[subcontainers.Name].Spec.CpuMaxTimeStamp = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Timestamp
 				}
+				Container[subcontainers.Name].Spec.CpuAvg = (Container[subcontainers.Name].Spec.CpuAvg*ConPointNums + Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage) / (ConPointNums + 1)
 				if Container[subcontainers.Name].Spec.DiskMax < Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Diskusage {
 					Container[subcontainers.Name].Spec.DiskMax = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Diskusage
 					Container[subcontainers.Name].Spec.DiskMaxTimeStamp = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Timestamp
 				}
+				Container[subcontainers.Name].Spec.DiskAvg = (Container[subcontainers.Name].Spec.DiskAvg*ConPointNums + Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Diskusage) / (ConPointNums + 1)
 				if Container[subcontainers.Name].Spec.MemoryMax < Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Memmoryusage {
 					Container[subcontainers.Name].Spec.MemoryMax = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Memmoryusage
 					Container[subcontainers.Name].Spec.MemoryMaxTimeStamp = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Timestamp
 				}
+				Container[subcontainers.Name].Spec.MemoryAvg = (Container[subcontainers.Name].Spec.MemoryAvg*ConPointNums + Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Memmoryusage) / (ConPointNums + 1)
 				if Container[subcontainers.Name].Spec.RxMax < Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Rx {
 					Container[subcontainers.Name].Spec.RxMax = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Rx
 					Container[subcontainers.Name].Spec.RxMaxTimeStamp = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Timestamp
 				}
+				Container[subcontainers.Name].Spec.RxAvg = (Container[subcontainers.Name].Spec.RxAvg*float64(ConPointNums) + Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Rx) / float64(ConPointNums+1)
 				if Container[subcontainers.Name].Spec.TxMax < Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Tx {
 					Container[subcontainers.Name].Spec.TxMax = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Tx
 					Container[subcontainers.Name].Spec.TxMaxTimeStamp = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Timestamp
 				}
+				Container[subcontainers.Name].Spec.TxAvg = (Container[subcontainers.Name].Spec.TxAvg*float64(ConPointNums) + Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Tx) / float64(ConPointNums+1)
 				Container[subcontainers.Name].Index = (Container[subcontainers.Name].Index + 1) % 120
 				Container[subcontainers.Name].Switch = Switch
 			}

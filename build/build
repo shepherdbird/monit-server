@@ -1,5 +1,5 @@
 #!/bin/bash
-go build .
-cp ./monit-server build/monit-server
+go build ../
+cp ../monit-server monit-server
 sudo docker build --rm -t monitserver .
 sudo docker save monitserver > monitserver.tar

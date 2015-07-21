@@ -91,7 +91,7 @@ func NewNodestatus(ip string) *Nodestatus {
 	}
 }
 */
-func (c *Config) GetMachineInfo(ip string) {
+func (c *Config) GetMachineInfo(ip string) error {
 	machineinfo := MachineInfo{}
 	client := &http.Client{}
 	resp, err := client.Get("http://" + ip + ":4194/api/v1.3/machine/")
@@ -111,8 +111,9 @@ func (c *Config) GetMachineInfo(ip string) {
 		}
 		Cluster[ip].Diskcapacity = Filesystem
 	}
+	return err
 }
-func (c *Config) GetContainerInfo(ip string) {
+func (c *Config) GetContainerInfo(ip string) error {
 	containerinfo := ContainerInfo{}
 	client := &http.Client{}
 	resp, err := client.Get("http://" + ip + ":4194/api/v1.3/containers/")
@@ -144,6 +145,7 @@ func (c *Config) GetContainerInfo(ip string) {
 		}
 		c.NetworkInfo = nets
 	}
+	return err
 }
 func GetVersion(ip string) (DockerVer, KernelVer, OSVer string) {
 	cmd := exec.Command("/bin/sh", "-c", "curl "+ip+" | grep \"Docker Version\"  | cut -d '<' -f4 | cut -d ' ' -f2")

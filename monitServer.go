@@ -106,8 +106,16 @@ func GetClusterStatus() {
 	for {
 		for _, ip := range Ips {
 			conf := &Config{}
-			conf.GetMachineInfo(ip)
-			conf.GetContainerInfo(ip)
+			err := conf.GetMachineInfo(ip)
+			if err != nil {
+				time.Sleep(time.Second * 10)
+				continue
+			}
+			err = conf.GetContainerInfo(ip)
+			if err != nil {
+				time.Sleep(time.Second * 10)
+				continue
+			}
 			if Cluster[ip].Spec.CpuMax < conf.Cpuusage {
 				Cluster[ip].Spec.CpuMax = conf.Cpuusage
 				Cluster[ip].Spec.CpuMaxTimeStamp = conf.Timestamp

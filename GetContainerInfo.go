@@ -81,7 +81,7 @@ func ContainerIdInfo(ip string) {
 					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Timestamp = containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Timestamp.Unix()
 					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Memmoryusage = containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Memory.Usage
 					interval := containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Timestamp.Sub(containerIdInfo.Stats[0].Timestamp)
-					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage = uint64(float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Cpu.Usage.Total-containerIdInfo.Stats[0].Cpu.Usage.Total) / float64(interval) * 1000000000)
+					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage = uint64(float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Cpu.Usage.Total-containerIdInfo.Stats[0].Cpu.Usage.Total) / float64(interval) / float64(Cluster[ip].Cpucores) * 100)
 					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Name = containerIdInfo.Stats[0].Network.Name
 					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Rx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.RxBytes-containerIdInfo.Stats[0].Network.RxBytes) * 1000 / float64(interval)
 					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Tx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.TxBytes-containerIdInfo.Stats[0].Network.TxBytes) * 1000 / float64(interval)

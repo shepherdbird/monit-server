@@ -2,3 +2,4 @@ monit-server
 build/monit-server
 build/monitserver.tar
 monitserver.tar
+test/test

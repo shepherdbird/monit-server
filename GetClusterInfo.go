@@ -17,15 +17,15 @@ type Net struct {
 }
 type Config struct {
 	Timestamp    int64
-	Cpuusage     uint64
+	Cpuusage     float64
 	Memmoryusage uint64
 	Diskusage    uint64
 	NetworkInfo  []*Net
 }
 type SpecialData struct {
 	CpuMaxTimeStamp    int64
-	CpuMax             uint64
-	CpuAvg             uint64
+	CpuMax             float64
+	CpuAvg             float64
 	MemoryMaxTimeStamp int64
 	MemoryMax          uint64
 	MemoryAvg          uint64
@@ -126,7 +126,8 @@ func (c *Config) GetContainerInfo(ip string) error {
 		//c.Timestamp = containerinfo.Spec.CreationTime.Unix()
 		c.Timestamp = containerinfo.Stats[len(containerinfo.Stats)-1].Timestamp.Unix()
 		interval := containerinfo.Stats[len(containerinfo.Stats)-1].Timestamp.Sub(containerinfo.Stats[0].Timestamp)
-		c.Cpuusage = uint64(float64(containerinfo.Stats[len(containerinfo.Stats)-1].Cpu.Usage.Total-containerinfo.Stats[0].Cpu.Usage.Total) / float64(interval) * 1000000000)
+		realContainerCoreNums := GetCoreNumFromMask(containerinfo.Spec.Cpu.Mask, Cluster[ip].Cpucores)
+		c.Cpuusage = float64(containerinfo.Stats[len(containerinfo.Stats)-1].Cpu.Usage.Total-containerinfo.Stats[0].Cpu.Usage.Total) / float64(interval) / float64(realContainerCoreNums)
 		var Filesystem uint64 = 0
 		for _, fs := range containerinfo.Stats[0].Filesystem {
 			Filesystem += fs.Usage

@@ -120,7 +120,7 @@ func GetClusterStatus() {
 				Cluster[ip].Spec.CpuMax = conf.Cpuusage
 				Cluster[ip].Spec.CpuMaxTimeStamp = conf.Timestamp
 			}
-			Cluster[ip].Spec.CpuAvg = (Cluster[ip].Spec.CpuAvg*PointNums + conf.Cpuusage) / (PointNums + 1)
+			Cluster[ip].Spec.CpuAvg = (Cluster[ip].Spec.CpuAvg*float64(PointNums) + conf.Cpuusage) / float64(PointNums+1)
 			if Cluster[ip].Spec.DiskMax < conf.Diskusage {
 				Cluster[ip].Spec.DiskMax = conf.Diskusage
 				Cluster[ip].Spec.DiskMaxTimeStamp = conf.Timestamp

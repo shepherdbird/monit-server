@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 type ContainerNet struct {
@@ -14,7 +16,7 @@ type ContainerNet struct {
 }
 type ContainerConfig struct {
 	Timestamp    int64
-	Cpuusage     uint64
+	Cpuusage     float64
 	Memmoryusage uint64
 	Diskusage    uint64
 	NetworkInfo  ContainerNet
@@ -34,6 +36,45 @@ var (
 	Container    map[string]*ContainerNode
 	ConPointNums uint64
 )
+
+func GetCoreNumFromMask(mask string, numCores int) int {
+	activeCores := GetActiveCores(mask)
+	num := 0
+	for i := 0; i < numCores; i++ {
+		if activeCores[i] {
+			num++
+		}
+	}
+	return num
+}
+
+func GetActiveCores(mask string) map[int]bool {
+	activeCores := make(map[int]bool)
+	for _, corebits := range strings.Split(mask, ",") {
+		cores := strings.Split(corebits, "-")
+		if len(cores) == 1 {
+			index, err := strconv.Atoi(cores[0])
+			if err != nil {
+				// Ignore malformed strings.
+				continue
+			}
+			activeCores[index] = true
+		} else if len(cores) == 2 {
+			start, err := strconv.Atoi(cores[0])
+			if err != nil {
+				continue
+			}
+			end, err := strconv.Atoi(cores[1])
+			if err != nil {
+				continue
+			}
+			for i := start; i <= end; i++ {
+				activeCores[i] = true
+			}
+		}
+	}
+	return activeCores
+}
 
 func ContainerIdInfo(ip string) {
 	containerinfo := ContainerInfo{}
@@ -81,7 +122,8 @@ func ContainerIdInfo(ip string) {
 					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Timestamp = containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Timestamp.Unix()
 					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Memmoryusage = containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Memory.Usage
 					interval := containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Timestamp.Sub(containerIdInfo.Stats[0].Timestamp)
-					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage = uint64(float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Cpu.Usage.Total-containerIdInfo.Stats[0].Cpu.Usage.Total) / float64(interval) / float64(Cluster[ip].Cpucores) * 100)
+					realContainerCoreNums := GetCoreNumFromMask(containerIdInfo.Spec.Cpu.Mask, Cluster[ip].Cpucores)
+					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Cpu.Usage.Total-containerIdInfo.Stats[0].Cpu.Usage.Total) / float64(interval) / float64(realContainerCoreNums)
 					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Name = containerIdInfo.Stats[0].Network.Name
 					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Rx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.RxBytes-containerIdInfo.Stats[0].Network.RxBytes) * 1000 / float64(interval)
 					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Tx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.TxBytes-containerIdInfo.Stats[0].Network.TxBytes) * 1000 / float64(interval)
@@ -90,7 +132,7 @@ func ContainerIdInfo(ip string) {
 					Container[subcontainers.Name].Spec.CpuMax = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage
 					Container[subcontainers.Name].Spec.CpuMaxTimeStamp = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Timestamp
 				}
-				Container[subcontainers.Name].Spec.CpuAvg = (Container[subcontainers.Name].Spec.CpuAvg*ConPointNums + Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage) / (ConPointNums + 1)
+				Container[subcontainers.Name].Spec.CpuAvg = (Container[subcontainers.Name].Spec.CpuAvg*float64(ConPointNums) + Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage) / float64(ConPointNums+1)
 				if Container[subcontainers.Name].Spec.DiskMax < Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Diskusage {
 					Container[subcontainers.Name].Spec.DiskMax = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Diskusage
 					Container[subcontainers.Name].Spec.DiskMaxTimeStamp = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Timestamp

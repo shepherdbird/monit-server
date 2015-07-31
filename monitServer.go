@@ -6,6 +6,7 @@ import (
 	"fmt"
 	//"log"
 	"github.com/coreos/go-etcd/etcd"
+	"github.com/fsouza/go-dockerclient"
 	"net"
 	"net/http"
 	"os"
@@ -24,10 +25,29 @@ var TxSecond int = 0
 func ClusterStatus(w http.ResponseWriter, req *http.Request) {
 	FCluster.Cluster = Cluster
 	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
-		Jdata, _ := json.Marshal(FCluster)
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(Jdata))
+		if req.Header.Get("flag") == "0" {
+			Jdata, _ := json.Marshal(FCluster)
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(Jdata))
+		} else {
+			LCluster := FinalCluster{}
+			LCluster.Status = FCluster.Status
+			LCluster.MasterRxAvg = FCluster.MasterRxAvg
+			LCluster.MasterRxMax = FCluster.MasterRxMax
+			LCluster.MasterRxMaxStamp = FCluster.MasterRxMaxStamp
+			LCluster.MasterTxAvg = FCluster.MasterTxAvg
+			LCluster.MasterTxMax = FCluster.MasterTxMax
+			LCluster.MasterTxMaxStamp = FCluster.MasterTxMaxStamp
+			nets := &ClusterNetwork{}
+			nets.TimeStamp = time.Now().Unix()
+			nets.Rx, nets.Tx = GetClusterNetworkStatus()
+			LCluster.Network = append(LCluster.Network, nets)
+			Jdata, _ := json.Marshal(LCluster)
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(Jdata))
+		}
 	} else {
 		w.WriteHeader(http.StatusForbidden)
 	}
@@ -38,10 +58,62 @@ func ContainerStatus(w http.ResponseWriter, req *http.Request) {
 	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
 		k, v := Container["/docker/"+containerId]
 		if v {
-			Jdata, _ := json.Marshal(k)
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(Jdata))
+			if req.Header.Get("flag") == "0" {
+				Jdata, _ := json.Marshal(k)
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(Jdata))
+			} else {
+				LContainer := &ContainerNode{}
+				LContainer.Cpu_limit = k.Cpu_limit
+				LContainer.Created_at = k.Created_at
+				LContainer.Creation_time = k.Creation_time
+				LContainer.Fs_limit = k.Fs_limit
+				LContainer.Memory_limit = k.Memory_limit
+				LContainer.Spec = k.Spec
+				client := &http.Client{}
+				containerIdInfo := ContainerInfo{}
+				resp1, err := client.Get("http://" + k.Created_at + ":4194/api/v1.3/containers" + "/docker/" + containerId)
+				if err != nil {
+					fmt.Println(err.Error())
+					w.Header().Set("Content-Type", "text/html; charset=utf-8")
+					w.WriteHeader(http.StatusBadRequest)
+					w.Write([]byte(err.Error()))
+				} else {
+					buff1 := new(bytes.Buffer)
+					buff1.ReadFrom(resp1.Body)
+					_ = json.Unmarshal(buff1.Bytes(), &containerIdInfo)
+					conf := &ContainerConfig{}
+					LContainer.Status = append(LContainer.Status, conf)
+					var filesystem uint64 = 0
+					if containerIdInfo.Spec.HasFilesystem {
+						for _, fs := range containerIdInfo.Stats[0].Filesystem {
+							filesystem += fs.Usage
+						}
+					}
+					//fmt.Println(len(containerIdInfo.Stats))
+					if len(containerIdInfo.Stats) == 0 {
+						fmt.Println("No container Info find.")
+						w.Header().Set("Content-Type", "text/html; charset=utf-8")
+						w.WriteHeader(http.StatusBadRequest)
+						w.Write([]byte("No container Info find."))
+					} else {
+						LContainer.Status[0].Diskusage = filesystem
+						LContainer.Status[0].Timestamp = containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Timestamp.Unix()
+						LContainer.Status[0].Memmoryusage = containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Memory.Usage
+						interval := containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Timestamp.Sub(containerIdInfo.Stats[0].Timestamp)
+						realContainerCoreNums := GetCoreNumFromMask(containerIdInfo.Spec.Cpu.Mask, Cluster[k.Created_at].Cpucores)
+						LContainer.Status[0].Cpuusage = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Cpu.Usage.Total-containerIdInfo.Stats[0].Cpu.Usage.Total) / float64(interval) / float64(realContainerCoreNums)
+						LContainer.Status[0].NetworkInfo.Name = containerIdInfo.Stats[0].Network.Name
+						LContainer.Status[0].NetworkInfo.Rx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.RxBytes-containerIdInfo.Stats[0].Network.RxBytes) * 1000000000 / float64(interval)
+						LContainer.Status[0].NetworkInfo.Tx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.TxBytes-containerIdInfo.Stats[0].Network.TxBytes) * 1000000000 / float64(interval)
+						Jdata, _ := json.Marshal(LContainer)
+						w.Header().Set("Content-Type", "application/json; charset=utf-8")
+						w.WriteHeader(http.StatusOK)
+						w.Write([]byte(Jdata))
+					}
+				}
+			}
 		} else {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusBadRequest)
@@ -51,6 +123,53 @@ func ContainerStatus(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 	}
 
+}
+func GetNodes(w http.ResponseWriter, req *http.Request) {
+	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
+		Jdata, _ := json.Marshal(Ips)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(Jdata))
+	} else {
+		w.WriteHeader(http.StatusForbidden)
+	}
+}
+func ApiNodeStatus(w http.ResponseWriter, req *http.Request) {
+	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
+		ip := req.Header.Get("node")
+		if req.Header.Get("flag") == "0" {
+			Jdata, _ := json.Marshal(FCluster.Cluster[ip])
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(Jdata))
+		} else {
+			LNode := &Nodestatus{}
+			LNode.Cpucores = FCluster.Cluster[ip].Cpucores
+			LNode.Cpufrequency = FCluster.Cluster[ip].Cpufrequency
+			LNode.Diskcapacity = FCluster.Cluster[ip].Diskcapacity
+			LNode.DockerVersion = FCluster.Cluster[ip].DockerVersion
+			LNode.KernelVersion = FCluster.Cluster[ip].KernelVersion
+			LNode.Memorycapacity = FCluster.Cluster[ip].Memorycapacity
+			LNode.OSVersion = FCluster.Cluster[ip].OSVersion
+			LNode.Spec = FCluster.Cluster[ip].Spec
+			conf := &Config{}
+			err := conf.GetContainerInfo(ip)
+			if err != nil {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte("Failed to get machine info."))
+			} else {
+				LNode.Status = append(LNode.Status, conf)
+				Jdata, _ := json.Marshal(LNode)
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(Jdata))
+			}
+		}
+
+	} else {
+		w.WriteHeader(http.StatusForbidden)
+	}
 }
 func excute(command string) string {
 	cmd := exec.Command("/bin/sh", "-c", command)
@@ -102,7 +221,7 @@ func MonitDockerDaemon() {
 }
 
 func GetClusterStatus() {
-	Point := 0
+	Point = 0
 	for {
 		for _, ip := range Ips {
 			conf := &Config{}
@@ -332,7 +451,69 @@ func Delete(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(200)
 	w.Write([]byte(`{"Message":"` + "Success" + `"}`))
 }
+func RMi(w http.ResponseWriter, req *http.Request) {
+	token := req.Header.Get("Authorization")
+	if token != Tocken {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+"Authorization Not Set"+`"}`, 406)
+		return
+	}
+	image := req.FormValue("imagesname")
+	//value := req.FormValue("value")
+	client := &http.Client{}
+	//resp, err := client.Get("http://10.10.103.250:8080/api/v1beta3/nodes/")
+	resp, err := client.Get("http://" + GetLocalIp() + ":8080/api/v1beta3/nodes/")
+	defer resp.Body.Close()
+	if err != nil {
+		//w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"errorMessage":"`+err.Error()+`"}`, 406)
+		return
+	}
+	buff := new(bytes.Buffer)
+	buff.ReadFrom(resp.Body)
+	data := NodeList{}
+	_ = json.Unmarshal(buff.Bytes(), &data)
 
+	chs := []chan int{}
+	for _, item := range data.Items {
+		ch := make(chan int)
+		chs = append(chs, ch)
+		nodeip := item.Name
+		fmt.Println(nodeip)
+		go func(nodeip string, ch chan int) {
+			defer close(ch)
+			endpoint := "http://" + nodeip + ":2376"
+			dclient, err := docker.NewClient(endpoint)
+			opts := docker.RemoveImageOptions{true, false}
+			err = dclient.RemoveImageExtended(image, opts)
+			if err != nil {
+				for err != nil && strings.Contains(err.Error(), "409") {
+					fmt.Println(err)
+					data := strings.Split(err.Error(), " ")
+					containerid := data[12]
+					fmt.Println(containerid)
+					rmc := docker.RemoveContainerOptions{ID: containerid, Force: true}
+					dclient.RemoveContainer(rmc)
+					err = dclient.RemoveImageExtended(image, opts)
+					if err != nil {
+						fmt.Println(err)
+					}
+				}
+				if err == nil {
+					fmt.Println(nodeip + "delete ok")
+				}
+			} else {
+				fmt.Println(nodeip + "delete ok")
+			}
+		}(nodeip, ch)
+	}
+	for _, ch := range chs {
+		<-ch
+	}
+	w.WriteHeader(200)
+	//w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte("delete success"))
+}
 func main() {
 	go GetClusterStatus()
 	go GetContainerStatus()
@@ -351,6 +532,8 @@ func main() {
 	excute("iptables -I OUTPUT -p tcp -m multiport --sport 50000,8080,8081,2376,80")
 	http.HandleFunc("/api/cluster/status", ClusterStatus)
 	http.HandleFunc("/api/container/status", ContainerStatus)
+	http.HandleFunc("/api/cluster/nodes", GetNodes)
+	http.HandleFunc("/api/node/status", ApiNodeStatus)
 	EtcdClient = etcd.NewClient([]string{"http://127.0.0.1:4001"})
 
 	go MonitDockerDaemon()
@@ -358,6 +541,7 @@ func main() {
 	http.HandleFunc("/create", Create)
 	http.HandleFunc("/get", Get)
 	http.HandleFunc("/delete", Delete)
+	http.HandleFunc("/rmi", RMi)
 	err := http.ListenAndServeTLS("0.0.0.0:50000", "cert.pem", "key.pem", nil)
 	//err := http.ListenAndServe("0.0.0.0:50000", nil)
 	if err != nil {

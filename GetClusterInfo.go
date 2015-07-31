@@ -74,6 +74,7 @@ var (
 	Cluster   map[string]*Nodestatus
 	PointNums uint64
 	FCluster  FinalCluster
+	Point     int
 )
 
 /*
@@ -138,8 +139,8 @@ func (c *Config) GetContainerInfo(ip string) error {
 		for index, inter := range containerinfo.Stats[len(containerinfo.Stats)-1].Network.Interfaces {
 			net := &Net{}
 			net.Name = inter.Name
-			net.Rx = float64(inter.RxBytes-containerinfo.Stats[0].Network.Interfaces[index].RxBytes) * 1000 / float64(interval)
-			net.Tx = float64(inter.TxBytes-containerinfo.Stats[0].Network.Interfaces[index].TxBytes) * 1000 / float64(interval)
+			net.Rx = float64(inter.RxBytes-containerinfo.Stats[0].Network.Interfaces[index].RxBytes) * 1000000000 / float64(interval)
+			net.Tx = float64(inter.TxBytes-containerinfo.Stats[0].Network.Interfaces[index].TxBytes) * 1000000000 / float64(interval)
 			//net.Rx = float64(containerinfo.Stats[len(containerinfo.Stats)-1].Network.RxBytes-containerinfo.Stats[0].Network.RxBytes) * 1000 / float64(interval)
 			//net.Tx = float64(containerinfo.Stats[len(containerinfo.Stats)-1].Network.TxBytes-containerinfo.Stats[0].Network.TxBytes) * 1000 / float64(interval)
 			nets = append(nets, net)

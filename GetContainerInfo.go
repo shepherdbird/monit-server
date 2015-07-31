@@ -23,6 +23,7 @@ type ContainerConfig struct {
 }
 type ContainerNode struct {
 	Creation_time int64
+	Created_at    string
 	Cpu_limit     uint64
 	Memory_limit  uint64
 	Fs_limit      uint64
@@ -103,6 +104,7 @@ func ContainerIdInfo(ip string) {
 				Container[subcontainers.Name].Creation_time = containerIdInfo.Spec.CreationTime.Unix()
 				Container[subcontainers.Name].Cpu_limit = containerIdInfo.Spec.Cpu.Limit
 				Container[subcontainers.Name].Memory_limit = containerIdInfo.Spec.Memory.Limit
+				Container[subcontainers.Name].Created_at = ip
 				var filesystem uint64 = 0
 				if containerIdInfo.Spec.HasFilesystem {
 					Container[subcontainers.Name].Fs_limit = containerIdInfo.Stats[0].Filesystem[0].Limit
@@ -125,8 +127,8 @@ func ContainerIdInfo(ip string) {
 					realContainerCoreNums := GetCoreNumFromMask(containerIdInfo.Spec.Cpu.Mask, Cluster[ip].Cpucores)
 					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Cpu.Usage.Total-containerIdInfo.Stats[0].Cpu.Usage.Total) / float64(interval) / float64(realContainerCoreNums)
 					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Name = containerIdInfo.Stats[0].Network.Name
-					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Rx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.RxBytes-containerIdInfo.Stats[0].Network.RxBytes) * 1000 / float64(interval)
-					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Tx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.TxBytes-containerIdInfo.Stats[0].Network.TxBytes) * 1000 / float64(interval)
+					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Rx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.RxBytes-containerIdInfo.Stats[0].Network.RxBytes) * 1000000000 / float64(interval)
+					Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].NetworkInfo.Tx = float64(containerIdInfo.Stats[len(containerIdInfo.Stats)-1].Network.TxBytes-containerIdInfo.Stats[0].Network.TxBytes) * 1000000000 / float64(interval)
 				}
 				if Container[subcontainers.Name].Spec.CpuMax < Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage {
 					Container[subcontainers.Name].Spec.CpuMax = Container[subcontainers.Name].Status[Container[subcontainers.Name].Index].Cpuusage

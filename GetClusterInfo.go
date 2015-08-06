@@ -39,6 +39,15 @@ type SpecialData struct {
 	TxMax              float64
 	TxAvg              float64
 }
+type NetworkSpec struct {
+	Name           string
+	RxMaxTimeStamp int64
+	RxMax          float64
+	RxAvg          float64
+	TxMaxTimeStamp int64
+	TxMax          float64
+	TxAvg          float64
+}
 type Nodestatus struct {
 	//Ip             string
 	DockerVersion  string
@@ -49,6 +58,7 @@ type Nodestatus struct {
 	Memorycapacity int64
 	Diskcapacity   uint64
 	Spec           SpecialData
+	NetSpec        []*NetworkSpec
 	Status         []*Config
 	Index          int
 }
@@ -140,7 +150,9 @@ func (c *Config) GetContainerInfo(ip string) error {
 			net := &Net{}
 			net.Name = inter.Name
 			net.Rx = float64(inter.RxBytes-containerinfo.Stats[0].Network.Interfaces[index].RxBytes) * 1000000000 / float64(interval)
+
 			net.Tx = float64(inter.TxBytes-containerinfo.Stats[0].Network.Interfaces[index].TxBytes) * 1000000000 / float64(interval)
+
 			//net.Rx = float64(containerinfo.Stats[len(containerinfo.Stats)-1].Network.RxBytes-containerinfo.Stats[0].Network.RxBytes) * 1000 / float64(interval)
 			//net.Tx = float64(containerinfo.Stats[len(containerinfo.Stats)-1].Network.TxBytes-containerinfo.Stats[0].Network.TxBytes) * 1000 / float64(interval)
 			nets = append(nets, net)

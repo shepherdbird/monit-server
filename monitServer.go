@@ -16,16 +16,23 @@ import (
 	"time"
 )
 
-var Switch bool = true
-var EtcdClient *etcd.Client
-var Tocken = "qwertyuiopasdfghjklzxcvbnm1234567890"
-var RxSecond int = 0
-var TxSecond int = 0
+type OverviewNode struct {
+	Ip     string `json:"ip"`
+	Status string `json:"status"`
+}
+
+var (
+	Switch     bool = true
+	EtcdClient *etcd.Client
+	Tocken         = "qwertyuiopasdfghjklzxcvbnm1234567890"
+	RxSecond   int = 0
+	TxSecond   int = 0
+)
 
 func ClusterStatus(w http.ResponseWriter, req *http.Request) {
 	FCluster.Cluster = Cluster
 	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
-		if req.Header.Get("flag") == "0" {
+		if req.Header.Get("flag") == "1" {
 			Jdata, _ := json.Marshal(FCluster)
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
@@ -58,7 +65,7 @@ func ContainerStatus(w http.ResponseWriter, req *http.Request) {
 	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
 		k, v := Container["/docker/"+containerId]
 		if v {
-			if req.Header.Get("flag") == "0" {
+			if req.Header.Get("flag") == "1" {
 				Jdata, _ := json.Marshal(k)
 				w.Header().Set("Content-Type", "application/json; charset=utf-8")
 				w.WriteHeader(http.StatusOK)
@@ -126,10 +133,36 @@ func ContainerStatus(w http.ResponseWriter, req *http.Request) {
 }
 func GetNodes(w http.ResponseWriter, req *http.Request) {
 	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
-		Jdata, _ := json.Marshal(Ips)
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(Jdata))
+		data := NodeList{}
+		client := &http.Client{}
+		//resp, err := client.Get("http://10.10.103.250:8080/api/v1beta3/nodes/")
+		resp, err := client.Get("http://" + GetLocalIp() + ":8080/api/v1beta3/nodes/")
+		if err != nil {
+			fmt.Printf(err.Error())
+			w.WriteHeader(http.StatusForbidden)
+		} else {
+			defer resp.Body.Close()
+			buff := new(bytes.Buffer)
+			buff.ReadFrom(resp.Body)
+			_ = json.Unmarshal(buff.Bytes(), &data)
+			OverNodes := []OverviewNode{}
+			for _, item := range data.Items {
+				//Ips = append(Ips, item.Name)
+				Lin := OverviewNode{}
+				Lin.Ip = item.Name
+				Lin.Status = "Ready"
+				//Cluster[item.Name] = &Nodestatus{} //NewNodestatus(item.Name)
+				//fmt.Println("item:", item.Name)
+				if item.Status.Conditions[0].Type != "Ready" {
+					Lin.Status = "Not Ready"
+				}
+				OverNodes = append(OverNodes, Lin)
+			}
+			Jdata, _ := json.Marshal(OverNodes)
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(Jdata))
+		}
 	} else {
 		w.WriteHeader(http.StatusForbidden)
 	}
@@ -137,7 +170,7 @@ func GetNodes(w http.ResponseWriter, req *http.Request) {
 func ApiNodeStatus(w http.ResponseWriter, req *http.Request) {
 	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
 		ip := req.Header.Get("node")
-		if req.Header.Get("flag") == "0" {
+		if req.Header.Get("flag") == "1" {
 			Jdata, _ := json.Marshal(FCluster.Cluster[ip])
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
@@ -152,6 +185,7 @@ func ApiNodeStatus(w http.ResponseWriter, req *http.Request) {
 			LNode.Memorycapacity = FCluster.Cluster[ip].Memorycapacity
 			LNode.OSVersion = FCluster.Cluster[ip].OSVersion
 			LNode.Spec = FCluster.Cluster[ip].Spec
+			LNode.NetSpec = FCluster.Cluster[ip].NetSpec
 			conf := &Config{}
 			err := conf.GetContainerInfo(ip)
 			if err != nil {
@@ -264,6 +298,32 @@ func GetClusterStatus() {
 				Cluster[ip].Status = append(Cluster[ip].Status, conf)
 			} else {
 				Cluster[ip].Status[Cluster[ip].Index] = conf
+			}
+			//node network max and average
+			if len(Cluster[ip].NetSpec) == 0 {
+				for _, s := range conf.NetworkInfo {
+					Lin := &NetworkSpec{}
+					Lin.Name = s.Name
+					Lin.RxMax = s.Rx
+					Lin.RxMaxTimeStamp = conf.Timestamp
+					Lin.RxAvg = s.Rx
+					Lin.TxMaxTimeStamp = conf.Timestamp
+					Lin.TxMax, Lin.TxAvg = s.Tx, s.Tx
+					Cluster[ip].NetSpec = append(Cluster[ip].NetSpec, Lin)
+				}
+			} else {
+				for k, v := range conf.NetworkInfo {
+					if Cluster[ip].NetSpec[k].RxMax < v.Rx {
+						Cluster[ip].NetSpec[k].RxMax = v.Rx
+						Cluster[ip].NetSpec[k].RxMaxTimeStamp = conf.Timestamp
+					}
+					Cluster[ip].NetSpec[k].RxAvg = float64(Cluster[ip].NetSpec[k].RxAvg*float64(PointNums)+float64(v.Rx)) / float64(PointNums+1)
+					if Cluster[ip].NetSpec[k].TxMax < v.Tx {
+						Cluster[ip].NetSpec[k].TxMax = v.Tx
+						Cluster[ip].NetSpec[k].TxMaxTimeStamp = conf.Timestamp
+					}
+					Cluster[ip].NetSpec[k].TxAvg = float64(Cluster[ip].NetSpec[k].TxAvg*float64(PointNums)+float64(v.Tx)) / float64(PointNums+1)
+				}
 			}
 			Point = Cluster[ip].Index
 			Cluster[ip].Index = (Cluster[ip].Index + 1) % 120

@@ -32,7 +32,7 @@ sudo docker load < monitserver.tar
 Run docker image in your kuber master node, use host network
 
 ```
-sudo docker run --privileged=true --net=host  -d -v '/etc/ssl/certs:/etc/ssl/certs' monitserver
+sudo docker run --privileged=true --restart=on-failure:10 --net=host  -d -v '/etc/ssl/certs:/etc/ssl/certs' monitserver
 ```
 
 Remember to open your 50000 port.

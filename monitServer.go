@@ -50,6 +50,30 @@ func ClusterStatus(w http.ResponseWriter, req *http.Request) {
 			nets.TimeStamp = time.Now().Unix()
 			nets.Rx, nets.Tx = GetClusterNetworkStatus()
 			LCluster.Network = append(LCluster.Network, nets)
+			LLcluster := map[string]*Nodestatus{}
+			for _, ip := range Ips {
+				LNode := &Nodestatus{}
+				LNode.Cpucores = FCluster.Cluster[ip].Cpucores
+				LNode.Cpufrequency = FCluster.Cluster[ip].Cpufrequency
+				LNode.Diskcapacity = FCluster.Cluster[ip].Diskcapacity
+				LNode.DockerVersion = FCluster.Cluster[ip].DockerVersion
+				LNode.KernelVersion = FCluster.Cluster[ip].KernelVersion
+				LNode.Memorycapacity = FCluster.Cluster[ip].Memorycapacity
+				LNode.OSVersion = FCluster.Cluster[ip].OSVersion
+				LNode.Spec = FCluster.Cluster[ip].Spec
+				LNode.NetSpec = FCluster.Cluster[ip].NetSpec
+				conf := &Config{}
+				err := conf.GetContainerInfo(ip)
+				if err != nil {
+					w.Header().Set("Content-Type", "text/html; charset=utf-8")
+					w.WriteHeader(http.StatusBadRequest)
+					w.Write([]byte("Failed to get machine info."))
+				} else {
+					LNode.Status = append(LNode.Status, conf)
+					LLcluster[ip] = LNode
+				}
+			}
+			LCluster.Cluster = LLcluster
 			Jdata, _ := json.Marshal(LCluster)
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusOK)

@@ -386,8 +386,10 @@ func GetClusterStatus() {
 			FCluster.MasterTxMax = nets.Tx
 			FCluster.MasterTxMaxStamp = nets.TimeStamp
 		}
-		FCluster.MasterRxAvg = (FCluster.MasterRxAvg*float64(PointNums) + nets.Rx) / float64(PointNums+1)
-		FCluster.MasterTxAvg = (FCluster.MasterTxAvg*float64(PointNums) + nets.Tx) / float64(PointNums+1)
+		//FCluster.MasterRxAvg = (FCluster.MasterRxAvg*float64(PointNums) + nets.Rx) / float64(PointNums+1)
+		FCluster.MasterRxAvg = float64(PointNums)/float64(PointNums+1)*FCluster.MasterRxAvg + nets.Rx/float64(PointNums+1)
+		//FCluster.MasterTxAvg = (FCluster.MasterTxAvg*float64(PointNums) + nets.Tx) / float64(PointNums+1)
+		FCluster.MasterTxAvg = float64(PointNums)/float64(PointNums+1)*FCluster.MasterTxAvg + nets.Tx/float64(PointNums+1)
 		PointNums += 1
 		time.Sleep(time.Second * 30)
 	}
@@ -543,6 +545,8 @@ func RMi(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	image := req.FormValue("imagesname")
+	appName := req.FormValue("appname")
+	fmt.Println(appName)
 	//value := req.FormValue("value")
 	client := &http.Client{}
 	//resp, err := client.Get("http://10.10.103.250:8080/api/v1beta3/nodes/")
@@ -568,6 +572,28 @@ func RMi(w http.ResponseWriter, req *http.Request) {
 			defer close(ch)
 			endpoint := "http://" + nodeip + ":2376"
 			dclient, err := docker.NewClient(endpoint)
+			listopts := docker.ListContainersOptions{All: true}
+			containers, err := dclient.ListContainers(listopts)
+			for _, v := range containers {
+				//fmt.Println(v)
+				if v.Image == image {
+					fmt.Println("rm container " + v.ID + "delete ok")
+					removecontaineropts := docker.RemoveContainerOptions{ID: v.ID, Force: true}
+					dclient.RemoveContainer(removecontaineropts)
+				} else {
+					if len(v.Names) == 0 {
+						continue
+					} else if v.Image == "packetbeat/v2" && strings.Contains(v.Names[0], appName) {
+						fmt.Println("rm container " + v.ID + "delete ok")
+						removecontaineropts := docker.RemoveContainerOptions{ID: v.ID, Force: true}
+						dclient.RemoveContainer(removecontaineropts)
+					} else if strings.Contains(v.Names[0], appName) {
+						fmt.Println("rm container " + v.ID + "delete ok")
+						removecontaineropts := docker.RemoveContainerOptions{ID: v.ID, Force: true}
+						dclient.RemoveContainer(removecontaineropts)
+					}
+				}
+			}
 			opts := docker.RemoveImageOptions{true, false}
 			err = dclient.RemoveImageExtended(image, opts)
 			if err != nil {

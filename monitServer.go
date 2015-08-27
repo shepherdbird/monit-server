@@ -24,14 +24,21 @@ type OverviewNode struct {
 var (
 	Switch     bool = true
 	EtcdClient *etcd.Client
-	Tocken         = "qwertyuiopasdfghjklzxcvbnm1234567890"
-	RxSecond   int = 0
-	TxSecond   int = 0
+	Tocken          = "qwertyuiopasdfghjklzxcvbnm1234567890"
+	RxSecond   int  = 0
+	TxSecond   int  = 0
+	IsWork     bool = true
 )
 
 func ClusterStatus(w http.ResponseWriter, req *http.Request) {
 	FCluster.Cluster = Cluster
 	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
+		if IsWork == false {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Master has not work."))
+			return
+		}
 		if req.Header.Get("flag") == "1" {
 			Jdata, _ := json.Marshal(FCluster)
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -87,6 +94,12 @@ func ClusterStatus(w http.ResponseWriter, req *http.Request) {
 func ContainerStatus(w http.ResponseWriter, req *http.Request) {
 	containerId := req.Header.Get("container")
 	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
+		if IsWork == false {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Master has not work."))
+			return
+		}
 		k, v := Container["/docker/"+containerId]
 		if v {
 			if req.Header.Get("flag") == "1" {
@@ -157,6 +170,12 @@ func ContainerStatus(w http.ResponseWriter, req *http.Request) {
 }
 func GetNodes(w http.ResponseWriter, req *http.Request) {
 	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
+		if IsWork == false {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Master has not work."))
+			return
+		}
 		data := NodeList{}
 		client := &http.Client{}
 		//resp, err := client.Get("http://10.10.103.250:8080/api/v1beta3/nodes/")
@@ -193,6 +212,12 @@ func GetNodes(w http.ResponseWriter, req *http.Request) {
 }
 func ApiNodeStatus(w http.ResponseWriter, req *http.Request) {
 	if req.Header.Get("token") == "qwertyuiopasdfghjklzxcvbnm1234567890" {
+		if IsWork == false {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Master has not work."))
+			return
+		}
 		ip := req.Header.Get("node")
 		if req.Header.Get("flag") == "1" {
 			Jdata, _ := json.Marshal(FCluster.Cluster[ip])
@@ -274,7 +299,7 @@ func MonitDockerDaemon() {
 				content)
 			time.Sleep(time.Hour)
 		}
-		time.Sleep(time.Second * 30)
+		time.Sleep(time.Second * 240)
 	}
 }
 
@@ -624,22 +649,144 @@ func RMi(w http.ResponseWriter, req *http.Request) {
 	//w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte("delete success"))
 }
+func MasterIsWork() {
+	count := 0
+	for {
+		client := &http.Client{}
+		//resp, err := client.Get("http://10.10.103.250:8080/api/v1beta3/nodes/")
+		resp, err := client.Get("http://" + GetLocalIp() + ":8080/api/v1beta3/nodes/")
+		data := NodeList{}
+		if err != nil {
+			IsWork = false
+			if count == 30 {
+				ip := GetLocalIp()
+				content := "<html><body>Master:" + ip + "does not work!</body></html>"
+				SendEmail(
+					"smtp.126.com",
+					25,
+					"wonderflow@126.com",
+					"zjuvlis123456",
+					[]string{"544028616@qq.com"},
+					"Master doesn't work",
+					content)
+			}
+		} else {
+			IsWork = true
+			defer resp.Body.Close()
+			buff := new(bytes.Buffer)
+			buff.ReadFrom(resp.Body)
+			_ = json.Unmarshal(buff.Bytes(), &data)
+			for _, item := range data.Items {
+				Ips = append(Ips, item.Name)
+				NodeWarning[item.Name] = &Warning{}
+				NodeWarning[item.Name].CPU = 0
+				NodeWarning[item.Name].Disk = 0
+				NodeWarning[item.Name].Memory = 0
+				Cluster[item.Name] = &Nodestatus{} //NewNodestatus(item.Name)
+				fmt.Println("item:", item.Name)
+				Cluster[item.Name].DockerVersion, Cluster[item.Name].KernelVersion, Cluster[item.Name].OSVersion = GetVersion(item.Name)
+				if item.Status.Conditions[0].Type != "Ready" {
+					FCluster.Status = "Not Ready"
+				}
+			}
+			go GetClusterStatus()
+			go GetContainerStatus()
+			go MasterWarning()
+			break
+		}
+		time.Sleep(time.Second * 60)
+		count++
+	}
+}
+func MasterWarning() {
+	cpu_turn := 3
+	memory_turn := 3
+	disk_turn := 3
+	for {
+		time.Sleep(time.Second * 45)
+		for ip, clu := range FCluster.Cluster {
+			if clu.Status[(clu.Index+119)%120].Cpuusage > 0.85 {
+				NodeWarning[ip].CPU++
+			} else {
+				NodeWarning[ip].CPU = 0
+				cpu_turn = 3
+			}
+			if float64(clu.Status[(clu.Index+119)%120].Memmoryusage)/float64(clu.Memorycapacity) > 0.85 {
+				NodeWarning[ip].Memory++
+			} else {
+				NodeWarning[ip].Memory = 0
+				memory_turn = 3
+			}
+			if float64(clu.Status[(clu.Index+119)%120].Diskusage)/float64(clu.Diskcapacity) > 0.85 {
+				NodeWarning[ip].Disk++
+			} else {
+				NodeWarning[ip].Disk = 0
+				disk_turn = 3
+			}
+		}
+		for ip, warn := range NodeWarning {
+			if warn.CPU == cpu_turn {
+				content := "<html><body>Master:" + GetLocalIp() + "'s minion " + ip + "'s CPU overload!</body></html>"
+				SendEmail(
+					"smtp.126.com",
+					25,
+					"wonderflow@126.com",
+					"zjuvlis123456",
+					[]string{"544028616@qq.com"},
+					"CPU overload!",
+					content)
+				cpu_turn *= cpu_turn
+				if cpu_turn > 81 {
+					cpu_turn = 81
+				}
+			}
+			if warn.Memory == memory_turn {
+				content := "<html><body>Master:" + GetLocalIp() + "'s minion " + ip + "'s memory overload!</body></html>"
+				SendEmail(
+					"smtp.126.com",
+					25,
+					"wonderflow@126.com",
+					"zjuvlis123456",
+					[]string{"544028616@qq.com"},
+					"Memory overload!",
+					content)
+				memory_turn *= memory_turn
+				if memory_turn > 81 {
+					memory_turn = 81
+				}
+			}
+			if warn.Disk == disk_turn {
+				content := "<html><body>Master:" + GetLocalIp() + "'s minion " + ip + "'s disk overload!</body></html>"
+				SendEmail(
+					"smtp.126.com",
+					25,
+					"wonderflow@126.com",
+					"zjuvlis123456",
+					[]string{"544028616@qq.com"},
+					"Disk overload!",
+					content)
+				disk_turn *= disk_turn
+				if disk_turn > 81 {
+					disk_turn = 81
+				}
+			}
+		}
+	}
+}
 func main() {
-	go GetClusterStatus()
-	go GetContainerStatus()
-
+	go MasterIsWork()
 	excute("iptables -F INPUT")
 	excute("iptables -F OUTPUT")
 	////Rx
-	excute("iptables -I INPUT -s 10.0.0.0/8 -p tcp -m multiport --dport 50000,8080,8081,2376,80")
-	excute("iptables -I INPUT -s 172.16.0.0/16 -p tcp -m multiport --dport 50000,8080,8081,2376,80")
-	excute("iptables -I INPUT -s 192.168.0.0/16 -p tcp -m multiport --dport 50000,8080,8081,2376,80")
-	excute("iptables -I INPUT -p tcp -m multiport --dport 50000,8080,8081,2376,80")
+	excute("iptables -I INPUT -s 10.0.0.0/8 -p tcp -m multiport --dport 50000,8080,8081,2376,80,81,22")
+	excute("iptables -I INPUT -s 172.16.0.0/16 -p tcp -m multiport --dport 50000,8080,8081,2376,80,81,22")
+	excute("iptables -I INPUT -s 192.168.0.0/16 -p tcp -m multiport --dport 50000,8080,8081,2376,80,81,22")
+	excute("iptables -I INPUT -p tcp -m multiport --dport 50000,8080,8081,2376,80,81,22")
 	//Tx
-	excute("iptables -I OUTPUT -d 10.0.0.0/8 -p tcp -m multiport --sport 50000,8080,8081,2376,80")
-	excute("iptables -I OUTPUT -d 172.16.0.0/16 -p tcp -m multiport --sport 50000,8080,8081,2376,80")
-	excute("iptables -I OUTPUT -d 192.168.0.0/16 -p tcp -m multiport --sport 50000,8080,8081,2376,80")
-	excute("iptables -I OUTPUT -p tcp -m multiport --sport 50000,8080,8081,2376,80")
+	excute("iptables -I OUTPUT -d 10.0.0.0/8 -p tcp -m multiport --sport 50000,8080,8081,2376,80,81,22")
+	excute("iptables -I OUTPUT -d 172.16.0.0/16 -p tcp -m multiport --sport 50000,8080,8081,2376,80,81,22")
+	excute("iptables -I OUTPUT -d 192.168.0.0/16 -p tcp -m multiport --sport 50000,8080,8081,2376,80,81,22")
+	excute("iptables -I OUTPUT -p tcp -m multiport --sport 50000,8080,8081,2376,80,81,22")
 	http.HandleFunc("/api/cluster/status", ClusterStatus)
 	http.HandleFunc("/api/container/status", ContainerStatus)
 	http.HandleFunc("/api/cluster/nodes", GetNodes)
@@ -664,31 +811,32 @@ func init() {
 	PointNums = 0
 	ConPointNums = 0
 	Cluster = map[string]*Nodestatus{}
+	NodeWarning = map[string]*Warning{}
 	Container = map[string]*ContainerNode{}
 	FCluster.Status = "Ready"
 	FCluster.Network = []*ClusterNetwork{}
 	FCluster.Cluster = Cluster
 	FCluster.MasterRxMax = 0
 	FCluster.MasterTxMax = 0
-	data := NodeList{}
-	client := &http.Client{}
-	//resp, err := client.Get("http://10.10.103.250:8080/api/v1beta3/nodes/")
-	resp, err := client.Get("http://" + GetLocalIp() + ":8080/api/v1beta3/nodes/")
-	if err != nil {
-		fmt.Printf(err.Error())
-	} else {
-		defer resp.Body.Close()
-		buff := new(bytes.Buffer)
-		buff.ReadFrom(resp.Body)
-		_ = json.Unmarshal(buff.Bytes(), &data)
-		for _, item := range data.Items {
-			Ips = append(Ips, item.Name)
-			Cluster[item.Name] = &Nodestatus{} //NewNodestatus(item.Name)
-			fmt.Println("item:", item.Name)
-			Cluster[item.Name].DockerVersion, Cluster[item.Name].KernelVersion, Cluster[item.Name].OSVersion = GetVersion(item.Name)
-			if item.Status.Conditions[0].Type != "Ready" {
-				FCluster.Status = "Not Ready"
-			}
-		}
-	}
+	//data := NodeList{}
+	//client := &http.Client{}
+	////resp, err := client.Get("http://10.10.103.250:8080/api/v1beta3/nodes/")
+	//resp, err := client.Get("http://" + GetLocalIp() + ":8080/api/v1beta3/nodes/")
+	//if err != nil {
+	//	fmt.Printf(err.Error())
+	//} else {
+	//	defer resp.Body.Close()
+	//	buff := new(bytes.Buffer)
+	//	buff.ReadFrom(resp.Body)
+	//	_ = json.Unmarshal(buff.Bytes(), &data)
+	//	for _, item := range data.Items {
+	//		Ips = append(Ips, item.Name)
+	//		Cluster[item.Name] = &Nodestatus{} //NewNodestatus(item.Name)
+	//		fmt.Println("item:", item.Name)
+	//		Cluster[item.Name].DockerVersion, Cluster[item.Name].KernelVersion, Cluster[item.Name].OSVersion = GetVersion(item.Name)
+	//		if item.Status.Conditions[0].Type != "Ready" {
+	//			FCluster.Status = "Not Ready"
+	//		}
+	//	}
+	//}
 }

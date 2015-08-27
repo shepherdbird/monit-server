@@ -78,13 +78,19 @@ type FinalCluster struct {
 	Network          []*ClusterNetwork
 	Cluster          map[string]*Nodestatus
 }
+type Warning struct {
+	CPU    int
+	Memory int
+	Disk   int
+}
 
 var (
-	Ips       []string
-	Cluster   map[string]*Nodestatus
-	PointNums uint64
-	FCluster  FinalCluster
-	Point     int
+	Ips         []string
+	Cluster     map[string]*Nodestatus
+	PointNums   uint64
+	FCluster    FinalCluster
+	Point       int
+	NodeWarning map[string]*Warning
 )
 
 /*

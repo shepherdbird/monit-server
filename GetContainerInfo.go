@@ -103,7 +103,8 @@ func ContainerIdInfo(ip string) {
 				_ = json.Unmarshal(buff1.Bytes(), &containerIdInfo)
 				Container[subcontainers.Name].Creation_time = containerIdInfo.Spec.CreationTime.Unix()
 				Container[subcontainers.Name].Cpu_limit = containerIdInfo.Spec.Cpu.Limit
-				Container[subcontainers.Name].Memory_limit = containerIdInfo.Spec.Memory.Limit
+				//Container[subcontainers.Name].Memory_limit = containerIdInfo.Spec.Memory.Limit
+				Container[subcontainers.Name].Memory_limit = uint64(FCluster.Cluster[ip].Memorycapacity)
 				Container[subcontainers.Name].Created_at = ip
 				var filesystem uint64 = 0
 				if containerIdInfo.Spec.HasFilesystem {
